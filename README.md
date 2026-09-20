@@ -1,4 +1,8 @@
-# @dispat/crier
+<h1>
+  <img src="https://raw.githubusercontent.com/yohimik/crier/v1.1.1/assets/logo.svg" alt="Crier logo" height="80" align="right">
+  @dispat/crier
+  <br clear="all">
+</h1>
 
 **Turn HTML templates and release notes into images, carousels, and videos. Publish them to fourteen social platforms from one command.**
 

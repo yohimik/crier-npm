@@ -1,7 +1,7 @@
-# Copied preview images
+# Copied logo and preview images
 
-These files are byte-for-byte copies of Crier-rendered previews from the local
-Crier and Dispat repositories. They are not generated mockups or records of
+These files are byte-for-byte copies of the Crier logo and rendered previews from
+the local Crier and Dispat repositories. They are not generated mockups or records of
 posts made by this npm wrapper. Both source repositories use the MIT license.
 
 - `crier` source HEAD: `dfa2aa456077ed0c4fb93d87cd8f1691de24e6dd`
@@ -9,6 +9,7 @@ posts made by this npm wrapper. Both source repositories use the MIT license.
 
 | Local file | Original file |
 | --- | --- |
+| [crier-logo.svg](crier-logo.svg) | [crier/assets/logo.svg](https://github.com/yohimik/crier/blob/v1.1.1/assets/logo.svg) |
 | [business-promo.png](business-promo.png) | [crier/examples/business-promo/preview.png](https://github.com/yohimik/crier/blob/main/examples/business-promo/preview.png) |
 | [custom-platform.png](custom-platform.png) | [crier/examples/custom-platform/preview.png](https://github.com/yohimik/crier/blob/main/examples/custom-platform/preview.png) |
 | [event-invite.png](event-invite.png) | [crier/examples/event-invite/preview.png](https://github.com/yohimik/crier/blob/main/examples/event-invite/preview.png) |
