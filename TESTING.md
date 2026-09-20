@@ -70,13 +70,18 @@ The manual Release workflow has three jobs:
 Versioning, building, testing, and npm publication run inside Docker. The complete
 suite runs after the releasing package is versioned and built, within its Dispat
 flow; there is no separate pre-release test job. GitHub Actions sets up the driver,
-Docker Buildx and its cache, passes credentials, and retains artifacts. Ordinary CI
+Docker Buildx and its cache, passes credentials, and retains artifacts. All shell
+operations live as separate named scripts in dispat.yaml; no .sh files or shell
+dispatch functions are used. Ordinary CI
 runs the same build, tests, and verification without publishing.
 
 Publication runs in a fresh runtime container using npm 12, so it cannot be skipped
-by a cached Docker build. The optional first-publication npmrc is mounted read-only.
-GitHub's OIDC environment is forwarded for trusted publishing and provenance.
-Credentials are not passed to build/test containers or recorded in image layers.
+by a cached Docker build. The checked-in .github/npmrc contains
+only an environment-variable reference and is mounted read-only. NODE_AUTH_TOKEN
+receives the repository's NPM_TOKEN secret at runtime. The `npm-auth` run.beforeAll
+sequence rejects a missing token and checks `npm whoami` in Docker before versioning
+or building. GitHub's OIDC environment is forwarded for provenance. Credentials
+are not passed to build/test containers or recorded in image layers.
 
 Dispat writes the root changelog, commits the manifest/lockfile/changelog, pushes
 the branch and `v{version}` tag, and creates a GitHub release with the generated
@@ -90,9 +95,14 @@ The initial feature commit includes `Release-As: 1.1.0`; native Crier is pinned 
 1. Review `pnpm release:plan` and `pnpm release:notes` for npm version `1.1.0`, the
    changelog, and GitHub body with its npm link.
 2. Run the Docker stages and review `.release/dist/`.
-3. Configure npm trusted publishing for `yohimik/crier-npm`, workflow `release.yml`.
-   First-publication bootstrap can use repository secret `NPM_TOKEN` with access
-   to the `@dispat` scope. Repository rules must permit Dispat's release writes.
+3. Create an npm granular token with Read and write permission for the `@dispat`
+   scope and Bypass 2FA for unattended direct publication; do not choose stage-only
+   permissions. Save it as `NPM_TOKEN` in the repository's Actions secrets:
+   https://github.com/yohimik/crier-npm/settings/secrets/actions/new.
+   The token's account needs permission to publish under `@dispat`. See npm's
+   token instructions: https://docs.npmjs.com/creating-and-viewing-access-tokens/.
+   The current release flow requires this secret. Repository rules must also
+   permit Dispat's release writes.
 4. Manually dispatch Release from main only when publication is authorized.
    Select the exact native Crier version; npm and native versions share a
    major/minor line, though their patches may differ.

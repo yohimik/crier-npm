@@ -863,7 +863,9 @@ development dependency as the driver:
 
 There is no separate pre-release test job. The complete suite gates publication
 inside the releasing package's own flow, after its version and build are ready.
-Docker Buildx and the cache helper follow Dispat's setup. Node on the runner only
+Docker Buildx uses the same GitHub Actions cache backend as Dispat. Each operation
+is a separate named script in `dispat.yaml`; there are no shell script files or
+shell dispatch functions. Node on the runner only
 installs and invokes `@dispat/bin`; the package build, tests, and npm upload run in
 containers. npm 12 runs on the Node 24 image, including script-approval tests.
 
@@ -880,14 +882,28 @@ architecture. After publication, native runners check all six targets. There are
 announcement jobs. The [Dispat announcement example](#automate-announcements-with-dispat)
 remains available for projects that want social posts.
 
-Configure npm trusted publishing for `yohimik/crier-npm` and workflow `release.yml`.
-The release job has `id-token: write` for npm provenance and `contents: write` for
-Dispat's lock, release commit, tags, and GitHub release. An optional `NPM_TOKEN`
-repository secret supports the first publication before trusted publishing is
-configured. Repository rules must permit the intended release writes. Credentials
-are passed to the publication container at runtime, including GitHub OIDC for
-trusted publishing and provenance. They are never Docker build arguments or image
-layers. CI has read-only repository access.
+Before dispatching Release, add the repository secret **`NPM_TOKEN`**:
+
+1. [Create an npm granular access token](https://docs.npmjs.com/creating-and-viewing-access-tokens/)
+   with **Read and write** permission for the `@dispat` scope and **Bypass 2FA**
+   enabled for unattended publishing. Choose direct publishing permission, not
+   **Read and write (stage only)**. The account must be able to publish under
+   `@dispat`; a token cannot grant permissions its account does not have.
+2. Open [New repository secret](https://github.com/yohimik/crier-npm/settings/secrets/actions/new),
+   enter `NPM_TOKEN` as the name, paste the token into GitHub's secret field, and save.
+3. Dispatch Release from main after review. Dispat's `run.beforeAll: npm-auth`
+   checks for the secret and runs `npm whoami` inside Docker before versioning,
+   building, or testing. Authentication failures stop the release immediately.
+
+The workflow exposes the secret as `NODE_AUTH_TOKEN`. [.github/npmrc](./.github/npmrc)
+contains only that environment-variable reference; the actual token is never
+committed. Authentication and publication mount this file read-only and receive
+the token at runtime. Docker builds and tests receive no npm credentials.
+
+The release job retains `id-token: write` for npm provenance and `contents: write`
+for Dispat's lock, release commit, tags, and GitHub release. GitHub's OIDC environment
+is forwarded to the publication container. The current configuration explicitly
+requires `NPM_TOKEN`; repository rules must also permit the release writes.
 
 Dispatching **Release** performs the real publication. Building or testing locally
 does not dispatch it. Pushing to main runs CI checks; publication requires a separate

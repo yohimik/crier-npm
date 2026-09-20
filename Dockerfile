@@ -10,7 +10,8 @@ WORKDIR /workspace
 
 FROM tools AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --ignore-scripts --store-dir /pnpm-store
+RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --ignore-scripts --store-dir /pnpm-store \
+ && node node_modules/@dispat/bin/build/bin/postinstall.js
 
 FROM dependencies AS source
 COPY . .
@@ -32,7 +33,7 @@ COPY --from=artifact /dist /workspace/dist
 COPY --from=artifact /release.json /workspace/release.json
 RUN pnpm run test:compiled \
  && pnpm run test:artifact \
- && CRIER_BINARY_VERSION="$(node -p 'require("./release.json").version')" bash scripts/check-install.sh dist/*.tgz
+ && pnpm exec dispat --root /workspace exec install-check --in root
 
 FROM scratch AS test-export
 COPY --from=tests /workspace/coverage /coverage

@@ -1,11 +1,224 @@
-# One root manifest. Dispat runs this package's scripts from src/.
+# One root manifest. Release stages start in src/; named helpers use the root.
+shell: [bash, -euo, pipefail, -c]
+
 scripts:
-  version: cd .. && bash scripts/docker.sh version
-  build: cd .. && bash scripts/docker.sh build
-  tests: cd .. && bash scripts/docker.sh tests
-  verify-artifact: cd .. && bash scripts/docker.sh verify-artifact
-  publish: cd .. && bash scripts/docker.sh publish
-  released: cd .. && bash scripts/docker.sh released
+  ci-plan: |
+    rc=0
+    pnpm exec dispat status --require-release || rc=$?
+    if [ "$rc" = 0 ]; then
+      echo 'releasing=true' >> "$GITHUB_OUTPUT"
+    elif [ "$rc" = 3 ]; then
+      echo 'releasing=false' >> "$GITHUB_OUTPUT"
+      echo 'Nothing to release; publication was skipped.' >> "$GITHUB_STEP_SUMMARY"
+    else
+      exit "$rc"
+    fi
+
+  require-npm-token: |
+    if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+      echo 'Missing NPM_TOKEN repository secret. Add it at https://github.com/yohimik/crier-npm/settings/secrets/actions/new' >&2
+      exit 1
+    fi
+
+  npm-auth:
+    - pnpm exec dispat exec require-npm-token --in root
+    - pnpm exec dispat exec tools-image --in root
+    - pnpm exec dispat exec npm-whoami --in root
+
+  npm-whoami: |
+    cd "$(git rev-parse --show-toplevel)"
+    docker run --rm --env NODE_AUTH_TOKEN \
+      --volume "$PWD/.github/npmrc:/npmrc:ro" --env NPM_CONFIG_USERCONFIG=/npmrc \
+      crier-npm-tools:24.18.0 npm whoami --registry=https://registry.npmjs.org/ > /dev/null
+    echo 'npm authentication validated'
+
+  tools-image: |
+    cd "$(git rev-parse --show-toplevel)"
+    cache=(--progress=plain)
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      cache+=(--cache-from "type=gha,scope=crier-npm-tools" --cache-to "type=gha,scope=crier-npm-tools,mode=max")
+    fi
+    docker buildx build --file Dockerfile --target tools \
+      "${cache[@]}" --load --tag crier-npm-tools:24.18.0 .
+
+  version:
+    - pnpm exec dispat exec tools-image --in root
+    - pnpm exec dispat exec version-files --in root
+
+  version-files: |
+    cd "$(git rev-parse --show-toplevel)"
+    docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+      --env DISPAT_NEW_VERSION crier-npm-tools:24.18.0 \
+      sh -ec 'node scripts/version.mjs; pnpm install --lockfile-only --ignore-scripts'
+
+  build: |
+    cd "$(git rev-parse --show-toplevel)"
+    rm -rf .release
+    cache=(--progress=plain)
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      cache+=(--cache-from "type=gha,scope=crier-npm-build" --cache-to "type=gha,scope=crier-npm-build,mode=max")
+    fi
+    docker buildx build --file Dockerfile --target export "${cache[@]}" \
+      --build-arg "CRIER_BINARY_VERSION=${CRIER_BINARY_VERSION:-1.1.1}" \
+      --output type=local,dest=.release .
+
+  tests:
+    - pnpm exec dispat exec tests-reset --in root
+    - pnpm exec dispat exec tests-node20 --in root
+    - pnpm exec dispat exec tests-node22 --in root
+    - pnpm exec dispat exec tests-node24 --in root
+    - pnpm exec dispat exec tools-image --in root
+    - pnpm exec dispat exec approve-artifact --in root
+
+  tests-reset: |
+    cd "$(git rev-parse --show-toplevel)"
+    test -f .release/dist/artifact.json
+    rm -f .release/tested.json
+
+  tests-node20: |
+    cd "$(git rev-parse --show-toplevel)"
+    cache=(--progress=plain)
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      cache+=(--cache-from "type=gha,scope=crier-npm-tests-20.17.0" --cache-to "type=gha,scope=crier-npm-tests-20.17.0,mode=max")
+    fi
+    docker buildx build --file Dockerfile --target test-export "${cache[@]}" \
+      --build-arg NODE_VERSION=20.17.0 --build-context artifact=.release \
+      --output type=local,dest=coverage/node-20.17.0 .
+
+  tests-node22: |
+    cd "$(git rev-parse --show-toplevel)"
+    cache=(--progress=plain)
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      cache+=(--cache-from "type=gha,scope=crier-npm-tests-22.9.0" --cache-to "type=gha,scope=crier-npm-tests-22.9.0,mode=max")
+    fi
+    docker buildx build --file Dockerfile --target test-export "${cache[@]}" \
+      --build-arg NODE_VERSION=22.9.0 --build-context artifact=.release \
+      --output type=local,dest=coverage/node-22.9.0 .
+
+  tests-node24: |
+    cd "$(git rev-parse --show-toplevel)"
+    cache=(--progress=plain)
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      cache+=(--cache-from "type=gha,scope=crier-npm-tests-24.18.0" --cache-to "type=gha,scope=crier-npm-tests-24.18.0,mode=max")
+    fi
+    docker buildx build --file Dockerfile --target test-export "${cache[@]}" \
+      --build-arg NODE_VERSION=24.18.0 --build-context artifact=.release \
+      --output type=local,dest=coverage/node-24.18.0 .
+
+  approve-artifact: |
+    cd "$(git rev-parse --show-toplevel)"
+    docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+      --volume "$PWD/.release/build:/workspace/build:ro" \
+      --volume "$PWD/.release/dist:/workspace/dist:ro" \
+      --volume "$PWD/.release/release.json:/workspace/release.json:ro" -i \
+      crier-npm-tools:24.18.0 node --input-type=module <<'NODE'
+    import {writeFile} from 'node:fs/promises';
+    import {verifyArtifact} from './build/scripts/pack.js';
+    const artifact = await verifyArtifact();
+    await writeFile('.release/tested.json', `${JSON.stringify(artifact, null, 2)}\n`);
+    console.log(`All runtime tests passed: ${artifact.name}@${artifact.version}`);
+    NODE
+
+  verify-artifact: |
+    cd "$(git rev-parse --show-toplevel)"
+    docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+      --volume "$PWD/.release/build:/workspace/build:ro" \
+      --volume "$PWD/.release/dist:/workspace/dist:ro" \
+      --volume "$PWD/.release/release.json:/workspace/release.json:ro" -i \
+      crier-npm-tools:24.18.0 node --input-type=module <<'NODE'
+    import {readFile} from 'node:fs/promises';
+    import {verifyArtifact} from './build/scripts/pack.js';
+    const artifact = await verifyArtifact();
+    const tested = JSON.parse(await readFile('.release/tested.json', 'utf8'));
+    for (const key of ['tarball', 'integrity', 'name', 'version']) {
+      if (tested[key] !== artifact[key]) throw new Error(`Tested artifact ${key} no longer matches`);
+    }
+    console.log(`Verified tested artifact: ${artifact.name}@${artifact.version}`);
+    NODE
+
+  publish:
+    - pnpm exec dispat exec require-npm-token --in root
+    - pnpm exec dispat exec verify-artifact --in root
+    - pnpm exec dispat exec npm-publish --in root
+
+  npm-publish: |
+    cd "$(git rev-parse --show-toplevel)"
+    docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+      --volume "$PWD/.release/build:/workspace/build:ro" \
+      --volume "$PWD/.release/dist:/workspace/dist:ro" \
+      --volume "$PWD/.release/release.json:/workspace/release.json:ro" -i \
+      --volume "$PWD/.github/npmrc:/npmrc:ro" --env NPM_CONFIG_USERCONFIG=/npmrc \
+      --env NODE_AUTH_TOKEN --env DISPAT_CHANNEL \
+      --env ACTIONS_ID_TOKEN_REQUEST_URL --env ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+      --env GITHUB_ACTIONS --env GITHUB_EVENT_NAME --env GITHUB_REPOSITORY \
+      --env GITHUB_REPOSITORY_ID --env GITHUB_REPOSITORY_OWNER_ID \
+      --env GITHUB_REF --env GITHUB_SHA --env GITHUB_WORKFLOW_REF --env GITHUB_WORKFLOW_SHA \
+      --env GITHUB_RUN_ID --env GITHUB_RUN_ATTEMPT --env GITHUB_SERVER_URL --env GITHUB_API_URL \
+      --env RUNNER_ENVIRONMENT --env CI \
+      crier-npm-tools:24.18.0 node --input-type=module <<'NODE'
+    import {verifyArtifact} from './build/scripts/pack.js';
+    import {publish} from './build/scripts/publish.js';
+    const artifact = await verifyArtifact();
+    await publish({tarball: artifact.tarball});
+    NODE
+
+  released: |
+    cd "$(git rev-parse --show-toplevel)"
+    output=(--env DISPAT_NEW_VERSION)
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+      output+=(--volume "$GITHUB_OUTPUT:/github-output" --env GITHUB_OUTPUT=/github-output)
+    fi
+    docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+      --volume "$PWD/.release/build:/workspace/build:ro" \
+      --volume "$PWD/.release/dist:/workspace/dist:ro" \
+      --volume "$PWD/.release/release.json:/workspace/release.json:ro" "${output[@]}" \
+      crier-npm-tools:24.18.0 node scripts/released.mjs
+
+  install-check:
+    - pnpm exec dispat exec install-check-global --in root
+    - pnpm exec dispat exec install-check-pnpm --in root
+
+  install-check-global: |
+    tarball=$(node -p 'JSON.parse(require("node:fs").readFileSync("dist/artifact.json", "utf8")).tarball')
+    expected=$(node -p 'require("./release.json").version')
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    prefix="$work/global prefix"
+    npm install --global --prefix "$prefix" --ignore-scripts "$tarball"
+    installed="$(npm root --global --prefix "$prefix")/@dispat/crier"
+    if node "$installed/build/bin/crier.js" --version > "$work/output" 2> "$work/error"; then
+      echo 'A script-blocked installation unexpectedly had a binary' >&2
+      exit 1
+    fi
+    grep -F 'install script may have been blocked' "$work/error"
+    node "$installed/build/bin/postinstall.js"
+    "$prefix/bin/crier" --version | awk -v expected="$expected" '
+      $1 == "crier" && $2 == expected { found=1 }
+      END { exit found ? 0 : 1 }
+    '
+    "$prefix/bin/crier" --help
+    status=0
+    "$prefix/bin/crier" self-update || status=$?
+    test "$status" = 2
+
+  install-check-pnpm: |
+    tarball=$(node -p 'JSON.parse(require("node:fs").readFileSync("dist/artifact.json", "utf8")).tarball')
+    expected=$(node -p 'require("./release.json").version')
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    mkdir -p "$work/pnpm consumer"
+    cd "$work/pnpm consumer"
+    node -e 'require("node:fs").writeFileSync("package.json", JSON.stringify({name:"crier-install-check",private:true,packageManager:"pnpm@10.34.1"}))'
+    pnpm add --ignore-scripts "$tarball"
+    node node_modules/@dispat/crier/build/bin/postinstall.js
+    pnpm exec crier --version | awk -v expected="$expected" '
+      $1 == "crier" && $2 == expected { found=1 }
+      END { exit found ? 0 : 1 }
+    '
+
+# Check authentication before versioning or building anything.
+run:
+  beforeAll: npm-auth
 
 packages:
   crier:

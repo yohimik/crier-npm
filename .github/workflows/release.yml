@@ -36,17 +36,7 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Compute the read-only plan
         id: status
-        run: |
-          rc=0
-          pnpm exec dispat status --require-release || rc=$?
-          case "$rc" in
-            0) echo 'releasing=true' >> "$GITHUB_OUTPUT" ;;
-            3)
-              echo 'releasing=false' >> "$GITHUB_OUTPUT"
-              echo 'Nothing to release; publication was skipped.' >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            *) exit "$rc" ;;
-          esac
+        run: pnpm exec dispat exec ci-plan --in root
 
   release:
     name: Run dispat, publish binaries
@@ -70,17 +60,6 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
-      - name: Configure an optional first-publication token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            umask 077
-            # npm expands the reference at runtime; the token itself is not written.
-            # shellcheck disable=SC2016
-            printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/crier-npmrc"
-            echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/crier-npmrc" >> "$GITHUB_ENV"
-          fi
       - name: Release through the pinned development dependency
         id: dispat
         env:
