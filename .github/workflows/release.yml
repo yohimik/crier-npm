@@ -48,20 +48,12 @@ jobs:
             *) exit "$rc" ;;
           esac
 
-  checks:
-    name: Full release gates
+  release:
+    name: Run dispat, publish binaries
     needs: plan
     if: needs.plan.outputs.releasing == 'true'
-    uses: ./.github/workflows/checks.yml
-    with:
-      binary-version: ${{ inputs.binary-version }}
-
-  release:
-    name: Publish and record the release
-    needs: [plan, checks]
-    if: needs.plan.outputs.releasing == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
       id-token: write
@@ -76,8 +68,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      - name: Install npm with trusted publishing support
-        run: npm install --global --ignore-scripts npm@12.0.1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
       - name: Configure an optional first-publication token
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -100,12 +92,15 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-package
-          path: dist/
+          path: |
+            .release/
+            coverage/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30
 
   post-release:
-    name: Registry install / ${{ matrix.os }}
+    name: Check published npm installation / ${{ matrix.os }}
     needs: release
     if: ${{ !cancelled() && needs.release.outputs.npm-released == 'true' }}
     runs-on: ${{ matrix.os }}
@@ -118,7 +113,9 @@ jobs:
       # Read the helper from the exact reviewed revision. If npm succeeded but
       # recording failed, a release tag may not exist yet; still verify npm.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.18.0
       - run: npm install --global --ignore-scripts npm@12.0.1
       - name: Wait for this exact npm version
         timeout-minutes: 6

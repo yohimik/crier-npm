@@ -6,6 +6,8 @@
 
 **Turn HTML templates and release notes into images, carousels, and videos. Publish them to fourteen social platforms from one command.**
 
+Questions, ideas, or release automation help? Join the [Dispat Discord community](https://discord.gg/83PwVSCCmk).
+
 `@dispat/crier` installs the native [Crier](https://github.com/yohimik/crier) Go CLI through npm and exposes the `crier` command. Use it for Instagram and Facebook posts, release announcements, LinkedIn carousels, Discord updates, Telegram albums, story cards, and music-backed videos. Images render in a pure-Go HTML/CSS engine: no Go installation, Chromium, or browser service is required.
 
 ```sh
@@ -800,8 +802,8 @@ Native `self-update` mutations are blocked because npm owns this installation. `
 
 This is one pnpm project with one root manifest. `@dispat/bin@1.10.3` is a pinned
 development dependency, and [package.json](./package.json) pins pnpm `10.34.1`.
-That pnpm line supports the package's Node 20.17 minimum; the CI matrix also runs
-Node 22.9 and 24.18. [pnpm-workspace.yaml](./pnpm-workspace.yaml) approves only
+That pnpm line supports the package's Node 20.17 minimum; the Docker test suite also
+runs Node 22.9 and 24.18. [pnpm-workspace.yaml](./pnpm-workspace.yaml) approves only
 Dispat's dependency build script and does not declare additional packages.
 
 [dispat.yaml](./dispat.yaml) declares one standalone package named `crier` at
@@ -826,12 +828,17 @@ from Git history and tags, not the parent manifest. The initial feature commit
 includes the footer `Release-As: 1.1.0` to pin that first version. Before the first
 authorized release, confirm that `pnpm release:plan` selects `1.1.0`.
 
-The version stage updates the root manifest and refreshes pnpm-lock.yaml without
-running install hooks. Release-time tests run before building. The build pins
-native Crier `1.1.1`, unless `CRIER_BINARY_VERSION` selects another published
-version, then packs one artifact. Before publication, Dispat checks its integrity
-and exercises installation from that tarball. The npm helper publishes stable
-versions on `latest` and prereleases on their channel.
+The version stage updates the root manifest and refreshes pnpm-lock.yaml in Docker,
+with install hooks disabled. The build packages native Crier `1.1.1`, unless
+`CRIER_BINARY_VERSION` selects another published version, and exports the compiled
+wrapper, metadata, and tarball into `.release/`.
+
+Dispat then runs `flow.postBuild: tests`: **every unit, integration, coverage, and
+artifact installation test runs against the releasing package**, inside Docker on
+Node 20.17, 22.9, and 24.18. Tests use the compiled files and tarball exported by the
+completed build. All three runs must pass before the artifact gets a test receipt.
+The publish stage verifies the tarball's identity, checksum, and receipt, then runs
+npm inside Docker. Stable versions use `latest`; prereleases use their channel.
 
 After publication, Dispat records and pushes the release commit and `v{version}`
 tag, writes the root changelog, and creates a GitHub release in
@@ -841,35 +848,46 @@ a link to that exact version on npm, such as
 
 ### CI/CD
 
-The workflow structure follows Dispat's own release process, using the installed
-npm development dependency for every Dispat invocation:
+The release workflow follows Dispat's sequence, using the pinned npm
+development dependency as the driver:
 
-| Workflow | When it runs | What it does |
-| --- | --- | --- |
-| [CI](./.github/workflows/ci.yml) | Pull requests, main pushes, manual checks | Calls the reusable full suite; never publishes. |
-| [Full suite](./.github/workflows/checks.yml) | Called by CI and the release gate | Runs type checking, all tests and coverage, npm 12 script-approval checks, artifact checks, and six native installation targets. |
-| [Release](./.github/workflows/release.yml) | Manual dispatch from main | Plans, runs the full suite, publishes through Dispat, records/pushes tags and GitHub release notes, then verifies the exact npm version. |
+1. **Is there anything to release?** `pnpm exec dispat status --require-release`
+   computes the plan. Exit 3 skips publication successfully; a broken plan fails.
+2. **Run dispat, publish binaries.** `pnpm exec dispat release --log-format json`
+   owns versioning → Docker build → all tests in `postBuild` → Docker publication →
+   changelog, commit, tags, and GitHub release.
+3. **Check published npm installation.** Only when npm was published, wait for
+   that exact version and install it on Linux, macOS, and Windows, on x64 and
+   ARM64. Verify the native version and CLI help. This also runs if publication
+   succeeded but a later release-recording step failed.
 
-The full suite runs on Linux and macOS with Node 20.17, 22.9, and 24.18. Packed
-installation and post-release registry checks cover Linux, macOS, and Windows on
-both x64 and ARM64. CI and release use `pnpm exec dispat`; they do not build a Go
-release driver or install Dispat globally. There are no announcement hooks, social
-posting jobs, Crier account secrets, or tunnel steps in these workflows. The
-[Dispat announcement example](#automate-announcements-with-dispat) is a separate
-copyable example for projects that want social posts.
+There is no separate pre-release test job. The complete suite gates publication
+inside the releasing package's own flow, after its version and build are ready.
+Docker Buildx and the cache helper follow Dispat's setup. Node on the runner only
+installs and invokes `@dispat/bin`; the package build, tests, and npm upload run in
+containers. npm 12 runs on the Node 24 image, including script-approval tests.
 
-The release workflow queues concurrent releases and treats an empty plan as a
-successful skip. A broken plan fails. The publication job re-runs tests and artifact
-checks after versioning. Its `postPublish` hook records the published npm and native
-versions so registry install checks can still run if later release recording fails.
-Registry propagation is checked separately from the npm upload.
+[CI](./.github/workflows/ci.yml) runs on pull requests and pushes to main. Its
+[full-suite workflow](./.github/workflows/checks.yml) invokes the same Docker build,
+test, and artifact-verification scripts without publishing. It explicitly runs the
+scripts in order because `dispat run build` does not execute release hooks.
+[Release](./.github/workflows/release.yml) is a manual dispatch from main and queues
+concurrent releases. Both workflows retain coverage and the tested artifact.
+
+The wrapper supports six native targets: Linux, macOS, and Windows on x64 and
+ARM64. The pre-publication container tests exercise Linux on the Docker host's native
+architecture. After publication, native runners check all six targets. There are no
+announcement jobs. The [Dispat announcement example](#automate-announcements-with-dispat)
+remains available for projects that want social posts.
 
 Configure npm trusted publishing for `yohimik/crier-npm` and workflow `release.yml`.
 The release job has `id-token: write` for npm provenance and `contents: write` for
 Dispat's lock, release commit, tags, and GitHub release. An optional `NPM_TOKEN`
 repository secret supports the first publication before trusted publishing is
 configured. Repository rules must permit the intended release writes. Credentials
-are confined to the release job; the test jobs have read-only repository access.
+are passed to the publication container at runtime, including GitHub OIDC for
+trusted publishing and provenance. They are never Docker build arguments or image
+layers. CI has read-only repository access.
 
 Dispatching **Release** performs the real publication. Building or testing locally
 does not dispatch it. Pushing to main runs CI checks; publication requires a separate
@@ -890,7 +908,7 @@ pnpm run test:artifact
 
 On PowerShell, set `$env:CRIER_BINARY_VERSION = '1.1.1'` before the build.
 `test:artifact` runs the detailed temporary-prefix npm/pnpm checks on macOS/Linux;
-CI additionally runs the portable install check on all six native targets.
+the Docker suite also runs the portable install check on its Linux architecture.
 The project uses pnpm for dependency installation, scripts, and lockfile updates.
 The artifact helpers deliberately call the npm CLI for `npm pack` and `npm publish`,
 and the consumer tests exercise both npm and pnpm.
@@ -898,6 +916,19 @@ and the consumer tests exercise both npm and pnpm.
 The build fetches metadata for the exact native tag and rejects missing assets,
 invalid sizes/digests, and mismatched tags. Packing produces
 `dist/dispat-crier-1.1.0.tgz` and an integrity record in `dist/artifact.json`.
+The Docker release path is separate from these local development outputs:
+
+```sh
+pnpm exec dispat run build --since all
+pnpm exec dispat run tests --since all
+pnpm exec dispat run verify-artifact --since all
+```
+
+These commands require Docker with Buildx. The tested release tarball is under
+`.release/dist/`, and coverage is under `coverage/node-<version>/`. Container paths
+inside `.release/dist/artifact.json` are verified inside Docker. Do not replace
+that tarball with a later local pack; publication requires the matching test receipt.
+
 The README, changelog, copied previews, and runnable examples are included;
 generated example preview outputs are excluded. See [TESTING.md](./TESTING.md)
 for the full validation and release procedure.

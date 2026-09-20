@@ -1,6 +1,7 @@
 /build/
 /coverage/
 /dist/
+/.release/
 /test-build/
 /release.json
 /crier-native

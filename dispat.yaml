@@ -1,23 +1,11 @@
 # One root manifest. Dispat runs this package's scripts from src/.
 scripts:
-  version: |
-    set -eu
-    cd ..
-    node scripts/version.mjs
-    pnpm install --lockfile-only --ignore-scripts
-  tests: cd .. && pnpm test
-  build: |
-    set -eu
-    cd ..
-    export pnpm_config_verify_deps_before_run=false
-    CRIER_BINARY_VERSION="${CRIER_BINARY_VERSION:-1.1.1}" pnpm build
-    pnpm run pack
-  verify-artifact: >-
-    cd .. && node --input-type=module -e
-    "import { verifyArtifact } from './build/scripts/pack.js'; await verifyArtifact()"
-  artifact-tests: cd .. && pnpm run test:artifact
-  publish: cd .. && node build/scripts/publish.js
-  released: cd .. && node scripts/released.mjs
+  version: cd .. && bash scripts/docker.sh version
+  build: cd .. && bash scripts/docker.sh build
+  tests: cd .. && bash scripts/docker.sh tests
+  verify-artifact: cd .. && bash scripts/docker.sh verify-artifact
+  publish: cd .. && bash scripts/docker.sh publish
+  released: cd .. && bash scripts/docker.sh released
 
 packages:
   crier:
@@ -31,9 +19,9 @@ packages:
       manifests: none
     flow:
       version: version
-      beforeBuild: tests
       build: build
-      beforePublish: [verify-artifact, artifact-tests]
+      postBuild: tests
+      beforePublish: verify-artifact
       publish: publish
       postPublish: released
 

@@ -81,14 +81,15 @@
     "compile:test": "node --input-type=module -e \"import{rmSync}from'node:fs';rmSync('test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "postinstall": "node postinstall.mjs",
     "repair": "node build/bin/postinstall.js",
-    "test": "pnpm run compile && pnpm run compile:test && c8 --all --include=build/**/*.js --include=postinstall.mjs --exclude=build/**/*.d.ts --exclude=build/lib/types.js --check-coverage --lines 95 --branches 95 node --test test-build/*.test.js test/workspace-install.test.mjs",
+    "test": "pnpm run compile && pnpm run test:compiled",
     "pack:release": "node build/scripts/package-release.js",
     "prepack": "node build/scripts/verify-package.js",
     "pack": "node build/scripts/pack.js",
     "test:artifact": "pnpm run compile:test && node test-build/smoke-artifact.js",
     "release:plan": "dispat status",
     "release:notes": "dispat preview --changelog --github",
-    "release": "dispat release"
+    "release": "dispat release",
+    "test:compiled": "pnpm run compile:test && c8 --all --include=build/**/*.js --include=postinstall.mjs --exclude=build/**/*.d.ts --exclude=build/lib/types.js --check-coverage --lines 95 --branches 95 node --test test-build/*.test.js test/workspace-install.test.mjs"
   },
   "engines": {
     "node": "^20.17.0 || >=22.9.0"

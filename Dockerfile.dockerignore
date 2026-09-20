@@ -1,0 +1,17 @@
+.git
+node_modules
+build
+test-build
+coverage
+dist
+.release
+release.json
+crier-native*
+.idea
+.DS_Store
+*.tmp
+examples/changelog/release-*.png
+examples/dispat/announce/*/preview*.jpg
+.npmrc
+.env
+.env.*

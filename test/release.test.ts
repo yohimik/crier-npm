@@ -42,6 +42,11 @@ test('release metadata generation fails closed', async t => {
 
 test('release metadata can use the workspace pin and canonical API without writing latest', async t => {
   const old = process.env.CRIER_BINARY_VERSION
+  const metadataPath = path.resolve('release.json')
+  const previousMetadata = await fs.readFile(metadataPath).catch(error => {
+    if (error.code !== 'ENOENT') throw error
+    return undefined
+  })
   process.env.CRIER_BINARY_VERSION = '1.10.1'
   let url = ''
   try {
@@ -50,7 +55,8 @@ test('release metadata can use the workspace pin and canonical API without writi
   } finally {
     if (old === undefined) delete process.env.CRIER_BINARY_VERSION
     else process.env.CRIER_BINARY_VERSION = old
-    await fs.rm(path.resolve('release.json'), { force:true })
+    if (previousMetadata) await fs.writeFile(metadataPath, previousMetadata)
+    else await fs.rm(metadataPath, { force:true })
   }
 })
 
