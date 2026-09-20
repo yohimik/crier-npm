@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><style>
+  @page {
+    margin: 64px 64px 80px;
+    background: #101713;
+    @top-left { content: "RELEASE NOTES"; color: #b0dbbd; font: 18px "Go" }
+    @bottom-right { content: counter(page) " / " counter(pages); color: #b0dbbd; font: 18px "Go" }
+  }
+  body { margin: 0; color: #f1fff4; font-family: "Go", sans-serif }
+  .cover { height: 936px; break-after: page }
+  h1 { font-size: 72px; overflow-wrap: break-word }
+  h2 { font-size: 32px; color: #b0dbbd; break-after: avoid }
+  p { font-size: 32px; line-height: 1.5 }
+  .items { white-space: pre-wrap; overflow-wrap: break-word;
+           font-size: 28px; line-height: 1.65; margin-bottom: 32px }
+</style></head><body>
+  <section class="cover">
+    <p>{{ .package }}</p><h1>{{ .new_version }}</h1>
+    <p>What changed in this release.</p>
+  </section>
+
+  <h2>READY FOR TESTING</h2>
+  <p>This release candidate is ready for feedback.</p>
+  <p>Replace these paragraphs with the changes you want testers to try.</p>
+</body></html>

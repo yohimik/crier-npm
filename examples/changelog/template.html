@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><style>
+  @page {
+    margin: 64px 64px 80px;
+    background: #10291f;
+    @top-left { content: "RELEASE NOTES"; color: #a5d6b4; font: 18px "Go" }
+    @bottom-right { content: counter(page) " / " counter(pages); color: #a5d6b4; font: 18px "Go" }
+  }
+  body { margin: 0; color: #f4fff5; font-family: "Go", sans-serif }
+  .cover { height: 936px; break-after: page }
+  .eyebrow { color: #a5d6b4; font-size: 26px }
+  h1 { font-size: 72px; overflow-wrap: break-word }
+  .summary { font-size: 38px; line-height: 1.5 }
+  h2 { font-size: 36px; color: #a5d6b4; break-after: avoid }
+  li { font-size: 29px; line-height: 1.6; margin-bottom: 20px;
+       overflow-wrap: break-word; break-inside: avoid }
+</style></head><body>
+  <section class="cover">
+    <p class="eyebrow">{{ .package }}</p>
+    <h1>{{ .version }}</h1>
+    <p class="summary">{{ .summary }}</p>
+  </section>
+  {{ range .sections }}
+  <section><h2>{{ .label }}</h2><ul>
+    {{ range .items }}<li>{{ . }}</li>{{ end }}
+  </ul></section>
+  {{ end }}
+</body></html>

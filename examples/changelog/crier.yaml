@@ -1,0 +1,11 @@
+render:
+  template: template.html
+  data: release.json
+  width: 1080
+  height: 1080
+  format: png
+  output: release.png
+  pages-max: 10
+  hermetic-fonts: true
+publish:
+  caption: "{{ .package }} {{ .version }} — release notes ({{ .Post }}/{{ .Posts }})"

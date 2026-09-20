@@ -1,0 +1,3 @@
+# A single root project; approve only the pinned release driver's installer.
+onlyBuiltDependencies:
+  - '@dispat/bin'

@@ -1,0 +1,12 @@
+# Shared destinations. Tokens and account IDs come from the environment.
+instagram:
+  enabled: true
+  poll-timeout: 5m
+  max-attachments: 10
+linkedin:
+  enabled: true
+  max-attachments: 10
+discord:
+  enabled: true
+  max-attachments: 10
+  mention-everyone: false

@@ -1,0 +1,113 @@
+{
+  "name": "@dispat/crier",
+  "version": "1.1.0",
+  "description": "Render HTML and changelogs to images, carousels, or video; publish to Instagram, Facebook, TikTok, Discord, and 10 more platforms. Native Crier CLI.",
+  "keywords": [
+    "crier",
+    "cli",
+    "social-media",
+    "social-media-automation",
+    "cross-posting",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "telegram",
+    "twitter",
+    "x",
+    "mastodon",
+    "discord",
+    "linkedin",
+    "reddit",
+    "slack",
+    "vk",
+    "threads",
+    "youtube",
+    "boosty",
+    "html-to-image",
+    "html-to-video",
+    "image-generation",
+    "video-generation",
+    "png",
+    "jpeg",
+    "gif",
+    "mp4",
+    "changelog",
+    "release-notes",
+    "release-announcements",
+    "conventional-commits",
+    "dispat",
+    "pagination",
+    "carousel",
+    "text-overflow",
+    "ellipsis",
+    "music",
+    "ffmpeg",
+    "ngrok",
+    "zrok",
+    "tunneling",
+    "s3",
+    "ci-cd",
+    "github-actions",
+    "golang",
+    "automation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yohimik/crier-npm.git"
+  },
+  "homepage": "https://github.com/yohimik/crier",
+  "type": "module",
+  "imports": {
+    "#root/*": "./build/*"
+  },
+  "bin": {
+    "crier": "build/bin/crier.js"
+  },
+  "files": [
+    "build/",
+    "postinstall.mjs",
+    "release.json",
+    "README.md",
+    "LICENSE",
+    "docs/images/",
+    "examples/",
+    "TESTING.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "compile": "node --input-type=module -e \"import{rmSync}from'node:fs';rmSync('build',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "build": "pnpm run compile && node build/scripts/package-release.js",
+    "compile:test": "node --input-type=module -e \"import{rmSync}from'node:fs';rmSync('test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
+    "postinstall": "node postinstall.mjs",
+    "repair": "node build/bin/postinstall.js",
+    "test": "pnpm run compile && pnpm run compile:test && c8 --all --include=build/**/*.js --include=postinstall.mjs --exclude=build/**/*.d.ts --exclude=build/lib/types.js --check-coverage --lines 95 --branches 95 node --test test-build/*.test.js test/workspace-install.test.mjs",
+    "pack:release": "node build/scripts/package-release.js",
+    "prepack": "node build/scripts/verify-package.js",
+    "pack": "node build/scripts/pack.js",
+    "test:artifact": "pnpm run compile:test && node test-build/smoke-artifact.js",
+    "release:plan": "dispat status",
+    "release:notes": "dispat preview --changelog --github",
+    "release": "dispat release"
+  },
+  "engines": {
+    "node": "^20.17.0 || >=22.9.0"
+  },
+  "dependencies": {
+    "make-fetch-happen": "15.0.6"
+  },
+  "devDependencies": {
+    "@dispat/bin": "1.10.3",
+    "@types/node": "24.10.1",
+    "c8": "10.1.3",
+    "typescript": "6.0.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bugs": {
+    "url": "https://github.com/yohimik/crier-npm/issues"
+  },
+  "packageManager": "pnpm@10.34.1"
+}

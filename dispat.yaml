@@ -1,0 +1,55 @@
+# One root manifest. Dispat runs this package's scripts from src/.
+scripts:
+  version: |
+    set -eu
+    cd ..
+    node scripts/version.mjs
+    pnpm install --lockfile-only --ignore-scripts
+  tests: cd .. && pnpm test
+  build: |
+    set -eu
+    cd ..
+    export pnpm_config_verify_deps_before_run=false
+    CRIER_BINARY_VERSION="${CRIER_BINARY_VERSION:-1.1.1}" pnpm build
+    pnpm run pack
+  verify-artifact: >-
+    cd .. && node --input-type=module -e
+    "import { verifyArtifact } from './build/scripts/pack.js'; await verifyArtifact()"
+  artifact-tests: cd .. && pnpm run test:artifact
+  publish: cd .. && node build/scripts/publish.js
+  released: cd .. && node scripts/released.mjs
+
+packages:
+  crier:
+    path: src
+    tagFormat: v{version}
+    changelog:
+      enabled: true
+      file: ../CHANGELOG.md
+    autoVersion:
+      enabled: true
+      manifests: none
+    flow:
+      version: version
+      beforeBuild: tests
+      build: build
+      beforePublish: [verify-artifact, artifact-tests]
+      publish: publish
+      postPublish: released
+
+commit:
+  enabled: true
+  push: true
+  name: github-actions[bot]
+  email: github-actions[bot]@users.noreply.github.com
+  include: [package.json, pnpm-lock.yaml, CHANGELOG.md]
+
+github:
+  enabled: true
+  allPackages: true
+  owner: yohimik
+  repo: crier-npm
+  footer:
+    - line: ["---", ""]
+    - line:
+        - "[Install @dispat/crier from npm](https://www.npmjs.com/package/@dispat/crier/v/${DISPAT_NEW_VERSION})"

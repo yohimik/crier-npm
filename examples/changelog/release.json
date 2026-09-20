@@ -1,0 +1,20 @@
+{
+  "package": "my-app",
+  "version": "1.1.0",
+  "summary": "A faster release, with fewer manual steps.",
+  "sections": [
+    {
+      "label": "Features",
+      "items": [
+        "Generate shareable images from release notes.",
+        "Publish the same announcement to several platforms."
+      ]
+    },
+    {
+      "label": "Fixes",
+      "items": [
+        "Keep long headings inside the card."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+# Merge these entries into your existing package-level dispat.yaml.
+# Dispat runs package scripts from that package's directory.
+# Keep your existing build, publish, and postPublish stages.
+scripts:
+  announce: >-
+    dispat if ANNOUNCE
+    --then 'crier publish --config "announce/$DISPAT_CHANNEL/crier.yaml"'
+    --else 'echo "announce: announcements are off for this run"'
+flow:
+  announce: announce

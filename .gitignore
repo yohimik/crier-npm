@@ -1,0 +1,15 @@
+/build/
+/coverage/
+/dist/
+/test-build/
+/release.json
+/crier-native
+/crier-native.exe
+*.tmp
+*.tmp.exe
+
+/node_modules/
+.DS_Store
+/.idea/
+/examples/changelog/release-*.png
+/examples/dispat/announce/*/preview*.jpg

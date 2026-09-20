@@ -1,0 +1,4 @@
+# Edit these words and rc/template.html together before a candidate ships.
+--- |-
+  {{ .package }} {{ .new_version }} is ready for testing.
+  Read the pictures for what to try and send us your feedback.

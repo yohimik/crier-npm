@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+import { mkdtemp, mkdir, readFile, writeFile, stat, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import assert from 'node:assert/strict'
+import { PACKAGE_ROOT, isMain } from '#root/lib/root.js'
+import { verifyArtifact } from '#root/scripts/pack.js'
+import { binaryName } from '#root/lib/platform.js'
+
+const execute = promisify(execFile)
+async function run(file: string, args: string[], cwd: string, extraEnv: NodeJS.ProcessEnv = {}) {
+  return execute(file, args, { cwd, windowsHide: true, timeout: 120_000,
+    env: { ...process.env, npm_config_ignore_scripts: 'false', npm_config_allow_scripts: '', ...extraEnv } })
+}
+
+function expectVersion(stdout: string, version: string, operation: string): void {
+  if (!stdout.split(/\r?\n/).some(line => line.split(/\s+/)[0] === 'crier' && line.split(/\s+/)[1] === version)) {
+    throw new Error(`${operation} returned the wrong native version: ${stdout}`)
+  }
+}
+
+export async function smoke(): Promise<void> {
+  const artifact = await verifyArtifact(PACKAGE_ROOT)
+  const tarball = process.env.DISPAT_OUTPUT_TARBALL ?? artifact.tarball
+  const release = JSON.parse(await readFile(path.join(PACKAGE_ROOT, 'release.json'), 'utf8')) as { version: string }
+  const work = await mkdtemp(path.join(tmpdir(), 'crier npm artifact '))
+  try {
+    const prefix = path.join(work, 'global prefix')
+    const npmMajor = Number((await run('npm', ['--version'], work)).stdout.trim().split('.')[0])
+    const blockedInstallArgs = ['install', '-g', '--prefix', prefix]
+    // npm 12 provides the real default-denial regression. Older supported npm
+    // versions use the equivalent explicit switch so the artifact gate remains portable.
+    if (npmMajor < 12) blockedInstallArgs.push('--ignore-scripts')
+    blockedInstallArgs.push(tarball)
+    await run('npm', blockedInstallArgs, work)
+    const globalBin = path.join(prefix, process.platform === 'win32' ? 'crier.cmd' : 'bin/crier')
+    const installedPackage = path.join(prefix, process.platform === 'win32' ? 'node_modules/@dispat/crier' : 'lib/node_modules/@dispat/crier')
+    await assertMissing(path.join(installedPackage, binaryName()))
+    await assert.rejects(run(globalBin, ['--version'], work), error => {
+      const failure = error as { stderr: string }
+      if (!failure.stderr.includes(path.join(installedPackage, 'build/bin/postinstall.js'))) throw error
+      return true
+    })
+    await run(process.execPath, [path.join(installedPackage, 'build/bin/postinstall.js')], work)
+    expectVersion((await run(globalBin, ['--version'], work)).stdout, release.version, 'repaired global install')
+
+    const approvedPrefix = path.join(work, 'approved global prefix')
+    await run('npm', ['install', '-g', '--prefix', approvedPrefix, '--ignore-scripts=false', tarball], work, {
+      npm_config_allow_scripts: `file:${tarball}`
+    })
+    expectVersion((await run(path.join(approvedPrefix, process.platform === 'win32' ? 'crier.cmd' : 'bin/crier'), ['--version'], work)).stdout,
+      release.version, 'approved global install')
+
+    const consumer = path.join(work, 'local consumer')
+    await mkdir(consumer)
+    await writeFile(path.join(consumer, 'package.json'), JSON.stringify({ name: 'crier-artifact-consumer', private: true, allowScripts: { [`file:${tarball}`]: true } }))
+    await run('npm', ['install', '--ignore-scripts=false', tarball], consumer)
+    const help = await run('npm', ['exec', '--', 'crier', '--help'], consumer)
+    if (!(help.stdout + help.stderr).includes('crier')) throw new Error('npm exec help smoke failed')
+    expectVersion((await run('npm', ['exec', '--', 'crier', '--version'], consumer)).stdout, release.version, 'local install')
+
+    const npxConsumer = path.join(work, 'npm exec consumer')
+    await mkdir(npxConsumer)
+    await writeFile(path.join(npxConsumer, 'package.json'), '{"name":"crier-npx-consumer","private":true}\n')
+    expectVersion((await run('npm', ['exec', '--yes', '--package', tarball, '--', 'crier', '--version'], npxConsumer, { npm_config_allow_scripts: `file:${tarball}` })).stdout, release.version, 'npm exec package install')
+
+    const pnpmConsumer = path.join(work, 'pnpm consumer')
+    await mkdir(pnpmConsumer)
+    await writeFile(path.join(pnpmConsumer, 'package.json'), '{"name":"crier-pnpm-consumer","private":true}\n')
+    await run('pnpm', ['add', '--ignore-scripts', tarball], pnpmConsumer)
+    await assertMissing(path.join(pnpmConsumer, 'node_modules/@dispat/crier', process.platform === 'win32' ? 'crier-native.exe' : 'crier-native'))
+    await run(process.execPath, [path.join(pnpmConsumer, 'node_modules/@dispat/crier/build/bin/postinstall.js')], pnpmConsumer)
+    expectVersion((await run('pnpm', ['exec', 'crier', '--version'], pnpmConsumer)).stdout, release.version, 'pnpm repair')
+    process.stdout.write(`npm artifact passed: ${process.platform}/${process.arch}, native ${release.version}\n`)
+  } finally { await rm(work, { recursive: true, force: true }) }
+}
+
+async function assertMissing(file: string): Promise<void> {
+  try {
+    await stat(file)
+    throw new Error('script-disabled pnpm install unexpectedly installed the native binary')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+}
+
+if (isMain(import.meta.url)) smoke().catch(error => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+  process.exitCode = 1
+})

@@ -1,0 +1,14 @@
+render:
+  template: template.html
+  data: "env:DISPAT_"
+  width: 1080
+  height: 1080
+  format: jpeg
+  jpeg-quality: 92
+  output: preview.jpg
+  hermetic-fonts: true
+  pages-max: 10
+publish:
+  $ref: ../publish.yaml
+  caption:
+    $ref: notes.yaml
