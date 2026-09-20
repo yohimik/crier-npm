@@ -76,39 +76,39 @@ dispatch functions are used. Ordinary CI
 runs the same build, tests, and verification without publishing.
 
 Publication runs in a fresh runtime container using npm 12, so it cannot be skipped
-by a cached Docker build. The checked-in .github/npmrc contains
-only an environment-variable reference and is mounted read-only. NODE_AUTH_TOKEN
-receives the repository's NPM_TOKEN secret at runtime. The `npm-auth` run.beforeAll
-sequence rejects a missing token and checks `npm whoami` in Docker before versioning
-or building. GitHub's OIDC environment is forwarded for provenance. Credentials
-are not passed to build/test containers or recorded in image layers.
+by a cached Docker build. The configured npm trusted publisher authorizes GitHub's
+OIDC identity. The release job forwards the OIDC environment into the container;
+no long-lived npm token, token secret, or credential npmrc is used. The
+`require-trusted-publishing` run.beforeAll script checks the OIDC environment before
+versioning. The identity exchange happens during `npm publish`; `npm whoami` does
+not verify trusted publishing. Builds and tests receive no publication credentials.
+See https://docs.npmjs.com/trusted-publishers/.
 
 Dispat writes the root changelog, commits the manifest/lockfile/changelog, pushes
 the branch and `v{version}` tag, and creates a GitHub release with the generated
 notes and a link to the exact npm version. No announcement job runs.
 
-## First release
+## Subsequent releases
 
-The initial feature commit includes `Release-As: 1.1.0`; native Crier is pinned to
-`1.1.1`. Before authorizing publication:
+The first release is tagged `v1.1.0`. The root package.json currently records that
+version, and native Crier remains pinned to `1.1.1`.
 
-1. Review `pnpm release:plan` and `pnpm release:notes` for npm version `1.1.0`, the
-   changelog, and GitHub body with its npm link.
+1. Use scoped conventional commits for release-worthy changes, for example
+   `fix(crier): correct installation`. Review `pnpm release:plan` and
+   `pnpm release:notes`; a patch after `v1.1.0` selects `1.1.1`.
 2. Run the Docker stages and review `.release/dist/`.
-3. Create an npm granular token with Read and write permission for the `@dispat`
-   scope and Bypass 2FA for unattended direct publication; do not choose stage-only
-   permissions. Save it as `NPM_TOKEN` in the repository's Actions secrets:
-   https://github.com/yohimik/crier-npm/settings/secrets/actions/new.
-   The token's account needs permission to publish under `@dispat`. See npm's
-   token instructions: https://docs.npmjs.com/creating-and-viewing-access-tokens/.
-   The current release flow requires this secret. Repository rules must also
-   permit Dispat's release writes.
-4. Manually dispatch Release from main only when publication is authorized.
-   Select the exact native Crier version; npm and native versions share a
-   major/minor line, though their patches may differ.
+3. Keep the npm trusted publisher configured for owner `yohimik`, repository
+   `crier-npm`, workflow filename `release.yml`, no environment name, and direct
+   publishing allowed. The workflow requires `id-token: write`; no npm secret is
+   needed.
+4. Dispatch Release from main when publication is authorized. Dispat passes the
+   computed version as DISPAT_NEW_VERSION; the Docker version stage writes it to
+   the root package.json and reconciles pnpm-lock.yaml before building. The release
+   commit records those files with the root changelog and the new tag.
 
-Use the `crier` commit scope for release-worthy root-only changes. Dispat derives
-versions from Git history and tags, not the parent manifest.
+Do not manually bump package.json or repeat the initial Release-As footer. The
+native version is selected by the workflow input and must share the npm version's
+major/minor line. Native and npm patch versions can differ.
 
 ## Recovery
 

@@ -14,23 +14,11 @@ scripts:
       exit "$rc"
     fi
 
-  require-npm-token: |
-    if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-      echo 'Missing NPM_TOKEN repository secret. Add it at https://github.com/yohimik/crier-npm/settings/secrets/actions/new' >&2
+  require-trusted-publishing: |
+    if [ "${GITHUB_ACTIONS:-}" != true ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+      echo 'Trusted publishing requires a GitHub Actions release job with id-token: write.' >&2
       exit 1
     fi
-
-  npm-auth:
-    - pnpm exec dispat exec require-npm-token --in root
-    - pnpm exec dispat exec tools-image --in root
-    - pnpm exec dispat exec npm-whoami --in root
-
-  npm-whoami: |
-    cd "$(git rev-parse --show-toplevel)"
-    docker run --rm --env NODE_AUTH_TOKEN \
-      --volume "$PWD/.github/npmrc:/npmrc:ro" --env NPM_CONFIG_USERCONFIG=/npmrc \
-      crier-npm-tools:24.18.0 npm whoami --registry=https://registry.npmjs.org/ > /dev/null
-    echo 'npm authentication validated'
 
   tools-image: |
     cd "$(git rev-parse --show-toplevel)"
@@ -137,7 +125,7 @@ scripts:
     NODE
 
   publish:
-    - pnpm exec dispat exec require-npm-token --in root
+    - pnpm exec dispat exec require-trusted-publishing --in root
     - pnpm exec dispat exec verify-artifact --in root
     - pnpm exec dispat exec npm-publish --in root
 
@@ -147,8 +135,7 @@ scripts:
       --volume "$PWD/.release/build:/workspace/build:ro" \
       --volume "$PWD/.release/dist:/workspace/dist:ro" \
       --volume "$PWD/.release/release.json:/workspace/release.json:ro" -i \
-      --volume "$PWD/.github/npmrc:/npmrc:ro" --env NPM_CONFIG_USERCONFIG=/npmrc \
-      --env NODE_AUTH_TOKEN --env DISPAT_CHANNEL \
+      --env DISPAT_CHANNEL \
       --env ACTIONS_ID_TOKEN_REQUEST_URL --env ACTIONS_ID_TOKEN_REQUEST_TOKEN \
       --env GITHUB_ACTIONS --env GITHUB_EVENT_NAME --env GITHUB_REPOSITORY \
       --env GITHUB_REPOSITORY_ID --env GITHUB_REPOSITORY_OWNER_ID \
@@ -216,9 +203,9 @@ scripts:
       END { exit found ? 0 : 1 }
     '
 
-# Check authentication before versioning or building anything.
+# Check OIDC availability before versioning or building anything.
 run:
-  beforeAll: npm-auth
+  beforeAll: require-trusted-publishing
 
 packages:
   crier:

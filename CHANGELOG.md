@@ -11,6 +11,3 @@
 - configure npm authentication and declare release scripts in Dispat
 
 - gate Docker publication on the complete package suite
-
-
-Release entries are generated here by Dispat after publication.

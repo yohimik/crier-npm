@@ -23,7 +23,7 @@ Run these commands in a directory with a Crier configuration, template, and data
 
 ## Rendered examples
 
-These are actual Crier renders, copied from the main repository. The image URLs below use the pinned upstream release so the npm README can display them before this wrapper repository is published. The same image files are included in [docs/images](./docs/images/README.md), with their original paths.
+These are actual Crier renders, copied from the main repository. The image URLs use a pinned upstream release so GitHub and npm display the same previews. The same image files are included in [docs/images](./docs/images/README.md), with their original paths.
 
 | Preview | Example and source | What it demonstrates |
 | --- | --- | --- |
@@ -823,10 +823,11 @@ first commit. Use the `crier` commit scope for release-worthy root-only changes
 such as `fix(crier): update installer documentation`; unscoped changes in `src/`
 also belong to the package.
 
-The prepared first npm version remains `1.1.0`. Dispat derives the release plan
-from Git history and tags, not the parent manifest. The initial feature commit
-includes the footer `Release-As: 1.1.0` to pin that first version. Before the first
-authorized release, confirm that `pnpm release:plan` selects `1.1.0`.
+The first release is recorded by the `v1.1.0` tag. Dispat derives subsequent
+versions from commits since the latest tag. A patch release advances the root
+`package.json` version from `1.1.0` to `1.1.1` during the version stage; the release
+commit includes that change. Do not edit the version manually or repeat the initial
+`Release-As: 1.1.0` footer. Use `pnpm release:plan` to see the next version first.
 
 The version stage updates the root manifest and refreshes pnpm-lock.yaml in Docker,
 with install hooks disabled. The build packages native Crier `1.1.1`, unless
@@ -882,28 +883,22 @@ architecture. After publication, native runners check all six targets. There are
 announcement jobs. The [Dispat announcement example](#automate-announcements-with-dispat)
 remains available for projects that want social posts.
 
-Before dispatching Release, add the repository secret **`NPM_TOKEN`**:
+Releases use [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+The npm package's trusted publisher must match owner `yohimik`, repository
+`crier-npm`, and workflow filename `release.yml`, with direct `npm publish` allowed.
+This workflow has no GitHub environment name. No npm token secret or npmrc
+credential is required.
 
-1. [Create an npm granular access token](https://docs.npmjs.com/creating-and-viewing-access-tokens/)
-   with **Read and write** permission for the `@dispat` scope and **Bypass 2FA**
-   enabled for unattended publishing. Choose direct publishing permission, not
-   **Read and write (stage only)**. The account must be able to publish under
-   `@dispat`; a token cannot grant permissions its account does not have.
-2. Open [New repository secret](https://github.com/yohimik/crier-npm/settings/secrets/actions/new),
-   enter `NPM_TOKEN` as the name, paste the token into GitHub's secret field, and save.
-3. Dispatch Release from main after review. Dispat's `run.beforeAll: npm-auth`
-   checks for the secret and runs `npm whoami` inside Docker before versioning,
-   building, or testing. Authentication failures stop the release immediately.
+The release job grants `id-token: write` and forwards GitHub's OIDC request URL and
+request token into the publication container. npm 12 exchanges that short-lived
+identity for package publication and generates provenance. The
+`require-trusted-publishing` script checks that the OIDC environment is available
+before versioning or building. `npm whoami` is not an OIDC authentication check:
+npm performs the exchange during publication.
 
-The workflow exposes the secret as `NODE_AUTH_TOKEN`. [.github/npmrc](./.github/npmrc)
-contains only that environment-variable reference; the actual token is never
-committed. Authentication and publication mount this file read-only and receive
-the token at runtime. Docker builds and tests receive no npm credentials.
-
-The release job retains `id-token: write` for npm provenance and `contents: write`
-for Dispat's lock, release commit, tags, and GitHub release. GitHub's OIDC environment
-is forwarded to the publication container. The current configuration explicitly
-requires `NPM_TOKEN`; repository rules must also permit the release writes.
+`contents: write` remains necessary for Dispat's lock, release commit, tags, and
+GitHub release. Repository rules must permit those writes. Docker builds and tests
+receive no publication credentials.
 
 Dispatching **Release** performs the real publication. Building or testing locally
 does not dispatch it. Pushing to main runs CI checks; publication requires a separate
@@ -931,7 +926,7 @@ and the consumer tests exercise both npm and pnpm.
 
 The build fetches metadata for the exact native tag and rejects missing assets,
 invalid sizes/digests, and mismatched tags. Packing produces
-`dist/dispat-crier-1.1.0.tgz` and an integrity record in `dist/artifact.json`.
+`dist/dispat-crier-<version>.tgz` and an integrity record in `dist/artifact.json`.
 The Docker release path is separate from these local development outputs:
 
 ```sh
